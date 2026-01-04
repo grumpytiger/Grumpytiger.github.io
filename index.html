@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Heater BLE Control</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; padding: 20px; background: #f0f0f0; }
+    h1 { color: #333; }
+    button { padding: 15px 30px; font-size: 18px; margin: 10px; border: none; border-radius: 8px; cursor: pointer; }
+    #onBtn { background: #4CAF50; color: white; }
+    #onBtn:disabled { background: #666; }
+    #offBtn { background: #f44336; color: white; }
+    #status { margin: 20px; font-size: 20px; font-weight: bold; color: #333; }
+    #log { margin: 20px; padding: 10px; background: #fff; border: 1px solid #ccc; height: 200px; overflow-y: scroll; text-align: left; }
+  </style>
+</head>
+<body>
+  <h1>Land Rover Heater Remote Control</h1>
+  <button id="connectBtn">Connect to HeaterControl</button>
+  <br><br>
+  <button id="onBtn" disabled>Turn Heater ON</button>
+  <button id="offBtn" disabled>Turn Heater OFF</button>
+  <div id="status">Disconnected</div>
+  <div id="log"></div>
+
+  <script>
+    const SERVICE_UUID       = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+    const WRITE_CHAR_UUID    = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+    const NOTIFY_CHAR_UUID   = "1c95d3f2-7f3e-4d3a-9c18-4e7b5d7e3d2f";
+
+    let device, writeChar, notifyChar;
+    const logDiv = document.getElementById('log');
+    const statusDiv = document.getElementById('status');
+
+    function log(message) {
+      logDiv.innerHTML += message + "<br>";
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    document.getElementById('connectBtn').addEventListener('click', async () => {
+      try {
+        log("Requesting BLE device...");
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ name: "HeaterControl" }],
+          optionalServices: [SERVICE_UUID]
+        });
+
+        log("Connecting to GATT server...");
+        const server = await device.gatt.connect();
+
+        log("Getting service...");
+        const service = await server.getPrimaryService(SERVICE_UUID);
+
+        log("Getting characteristics...");
+        writeChar = await service.getCharacteristic(WRITE_CHAR_UUID);
+        notifyChar = await service.getCharacteristic(NOTIFY_CHAR_UUID);
+
+        // Enable notifications
+        await notifyChar.startNotifications();
+        notifyChar.addEventListener('characteristicvaluechanged', event => {
+          const value = new TextDecoder().decode(event.target.value);
+          statusDiv.textContent = value;
+          log("Status update: " + value);
+        });
+
+        statusDiv.textContent = "Connected!";
+        document.getElementById('connectBtn').disabled = true;
+        document.getElementById('onBtn').disabled = false;
+        document.getElementById('offBtn').disabled = false;
+        log("Ready to control heater!");
+      } catch (error) {
+        log("Error: " + error);
+        statusDiv.textContent = "Connection failed";
+      }
+    });
+
+    document.getElementById('onBtn').addEventListener('click', async () => {
+      if (writeChar) {
+        try {
+          await writeChar.writeValue(new TextEncoder().encode("ON"));
+          log("Sent: ON");
+        } catch (e) { log("Write error: " + e); }
+      }
+    });
+
+    document.getElementById('offBtn').addEventListener('click', async () => {
+      if (writeChar) {
+        try {
+          await writeChar.writeValue(new TextEncoder().encode("OFF"));
+          log("Sent: OFF");
+        } catch (e) { log("Write error: " + e); }
+      }
+    });
+  </script>
+</body>
+</html>
