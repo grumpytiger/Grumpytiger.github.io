@@ -2,268 +2,96 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Webasto Heater Control</title>
-  <meta name="theme-color" content="#1a3c34"/>
+  <title>PreHeat Webasto Control</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
-    :root {
-      --primary: #2e7d32;
-      --primary-dark: #1b5e20;
-      --danger: #c62828;
-      --bg: #f5f5f5;
-      --card: white;
-      --text: #212121;
-      --border: #e0e0e0;
-    }
-
-    [data-theme="dark"] {
-      --bg: #121212;
-      --card: #1e1e1e;
-      --text: #e0e0e0;
-      --border: #333;
-    }
-
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      margin: 0;
-      padding: 0;
-      min-height: 100vh;
-      transition: background 0.3s, color 0.3s;
-    }
-
-    .container {
-      max-width: 420px;
-      margin: 0 auto;
-      padding: 16px;
-    }
-
-    header {
+      font-family: system-ui, sans-serif;
       text-align: center;
-      padding: 20px 0 12px;
+      background: #111;
+      color: #fff;
+      padding: 2rem;
     }
-
     h1 {
-      margin: 0;
-      font-size: 1.8rem;
-      color: var(--primary);
+      margin-bottom: 2rem;
     }
-
-    .status-card {
-      background: var(--card);
-      border-radius: 16px;
-      padding: 20px;
-      margin: 16px 0;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-      text-align: center;
-      border: 1px solid var(--border);
-    }
-
-    .status-label {
-      font-size: 0.9rem;
-      color: #757575;
-      margin-bottom: 8px;
-    }
-
-    .status-value {
-      font-size: 2.4rem;
-      font-weight: bold;
-      margin: 8px 0;
-    }
-
-    .buttons {
-      display: flex;
-      gap: 16px;
-      margin: 24px 0;
-    }
-
     button {
-      flex: 1;
-      padding: 16px;
-      font-size: 1.1rem;
-      font-weight: 600;
-      border: none;
-      border-radius: 12px;
-      cursor: pointer;
-      transition: all 0.2s;
-      color: white;
-    }
-
-    #connectBtn {
-      background: #0288d1;
-    }
-    #connectBtn:hover { background: #0277bd; }
-
-    #onBtn {
-      background: var(--primary);
-    }
-    #onBtn:hover { background: var(--primary-dark); }
-
-    #offBtn {
-      background: var(--danger);
-    }
-    #offBtn:hover { background: #b71c1c; }
-
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .connection-info {
-      margin-top: 24px;
-      font-size: 0.9rem;
-      color: #757575;
-      text-align: center;
-    }
-
-    .theme-toggle {
-      position: absolute;
-      top: 16px;
-      right: 16px;
-      background: none;
-      border: none;
       font-size: 1.4rem;
+      padding: 1rem 2rem;
+      margin: 1rem;
+      border-radius: 12px;
+      border: none;
       cursor: pointer;
     }
-
-    footer {
-      text-align: center;
-      padding: 24px 0;
-      color: #757575;
-      font-size: 0.85rem;
+    .on {
+      background: #e53935;
+      color: #fff;
+    }
+    .off {
+      background: #43a047;
+      color: #fff;
+    }
+    .connect {
+      background: #1e88e5;
+      color: #fff;
+    }
+    #status {
+      margin-top: 2rem;
+      opacity: 0.85;
     }
   </style>
 </head>
+
 <body>
+  <h1>🔥 PreHeat Control</h1>
 
-  <button class="theme-toggle" onclick="toggleTheme()">🌙</button>
+  <button class="connect" onclick="connect()">Connect</button><br/>
 
-  <div class="container">
-    <header>
-      <h1>Webasto Heater</h1>
-    </header>
+  <button class="on" onclick="heaterOn()">Heater ON</button>
+  <button class="off" onclick="heaterOff()">Heater OFF</button>
 
-    <div class="status-card">
-      <div class="status-label">Connection</div>
-      <div id="connectionStatus" class="status-value">Disconnected</div>
+  <div id="status">Not connected</div>
 
-      <div class="status-label" style="margin-top:20px">Heater State</div>
-      <div id="heaterStatus" class="status-value">OFF</div>
-    </div>
+<script>
+  const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+  const CHAR_UUID    = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
 
-    <div class="buttons">
-      <button id="connectBtn">Connect to Heater</button>
-    </div>
+  let device;
+  let characteristic;
 
-    <div class="buttons" id="controlButtons" style="display:none;">
-      <button id="onBtn">Heater ON</button>
-      <button id="offBtn">Heater OFF</button>
-    </div>
+  async function connect() {
+    try {
+      document.getElementById("status").innerText = "Requesting device...";
 
-    <div class="connection-info" id="deviceInfo"></div>
-  </div>
+      device = await navigator.bluetooth.requestDevice({
+        filters: [
+          { name: 'PreHeat' }
+        ],
+        optionalServices: [SERVICE_UUID]
+      });
 
-  <footer>
-    ESP32 + S-10 Webasto Control • Snodland, 2026
-  </footer>
+      const server = await device.gatt.connect();
+      const service = await server.getPrimaryService(SERVICE_UUID);
+      characteristic = await service.getCharacteristic(CHAR_UUID);
 
-  <script>
-    // Theme toggle
-    function toggleTheme() {
-      document.body.dataset.theme = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
-      localStorage.setItem('theme', document.body.dataset.theme);
+      document.getElementById("status").innerText = "Connected to PreHeat";
+    } catch (error) {
+      document.getElementById("status").innerText = "Connection failed";
+      console.error(error);
     }
+  }
 
-    if (localStorage.getItem('theme') === 'dark' ||
-        (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-      document.body.dataset.theme = 'dark';
-    }
+  async function heaterOn() {
+    if (!characteristic) return alert("Not connected");
+    await characteristic.writeValue(Uint8Array.of(0x01));
+    document.getElementById("status").innerText = "🔥 Heater ON";
+  }
 
-    // ── BLE Configuration ────────────────────────────────────────
-    let device;
-    let server;
-    let service;
-    let characteristic;
-    let isConnected = false;
-
-    const SERVICE_UUID        = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
-    const CHARACTERISTIC_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
-
-    const connectBtn    = document.getElementById('connectBtn');
-    const onBtn         = document.getElementById('onBtn');
-    const offBtn        = document.getElementById('offBtn');
-    const controlButtons = document.getElementById('controlButtons');
-    const connStatus    = document.getElementById('connectionStatus');
-    const heaterStatus  = document.getElementById('heaterStatus');
-    const deviceInfo    = document.getElementById('deviceInfo');
-
-    // ── Connect to ESP32 ─────────────────────────────────────────
-    async function connect() {
-      try {
-        device = await navigator.bluetooth.requestDevice({
-          filters: [{ namePrefix: "Heater" }],
-          optionalServices: [SERVICE_UUID]
-        });
-
-        deviceInfo.textContent = `Connected to: ${device.name || "HeaterESP32"}`;
-
-        device.addEventListener('gattserverdisconnected', onDisconnected);
-
-        server = await device.gatt.connect();
-        service = await server.getPrimaryService(SERVICE_UUID);
-        characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
-
-        isConnected = true;
-        updateUI();
-
-        // Try to read current heater state (optional)
-        try {
-          const value = await characteristic.readValue();
-          const decoder = new TextDecoder();
-          const state = decoder.decode(value);
-          heaterStatus.textContent = (state === "1") ? "ON" : "OFF";
-        } catch {}
-      } catch (error) {
-        console.error(error);
-        alert("Connection failed.\nMake sure heater is powered on.\n\n" + error.message);
-      }
-    }
-
-    function onDisconnected() {
-      isConnected = false;
-      updateUI();
-      alert("Disconnected from heater. Reconnect to continue.");
-    }
-
-    function updateUI() {
-      connStatus.textContent = isConnected ? "Connected" : "Disconnected";
-      connStatus.style.color = isConnected ? "#2e7d32" : "#c62828";
-      controlButtons.style.display = isConnected ? "flex" : "none";
-      connectBtn.textContent = isConnected ? "Reconnect" : "Connect to Heater";
-    }
-
-    // ── Send command to ESP32 (0x01 = ON, 0x00 = OFF) ─────────────
-    async function sendCommand(byte) {
-      if (!characteristic || !isConnected) return;
-
-      try {
-        const buffer = new Uint8Array([byte]);
-        await characteristic.writeValue(buffer);
-
-        // Optimistic UI update
-        heaterStatus.textContent = (byte === 0x01) ? "ON" : "OFF";
-        heaterStatus.style.color = (byte === 0x01) ? "#2e7d32" : "inherit";
-      } catch (error) {
-        console.error("Write failed:", error);
-        alert("Failed to control heater: " + error.message);
-      }
-    }
-
-    // ── Event Listeners ──────────────────────────────────────────
-    connectBtn.addEventListener('click', connect);
-    onBtn.addEventListener('click',  () => sendCommand(0x01));
-    offBtn.addEventListener('click', () => sendCommand(0x00));
-  </script>
+  async function heaterOff() {
+    if (!characteristic) return alert("Not connected");
+    await characteristic.writeValue(Uint8Array.of(0x00));
+    document.getElementById("status").innerText = "❄️ Heater OFF";
+  }
+</script>
 </body>
 </html>
