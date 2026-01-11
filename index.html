@@ -1,97 +1,283 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Heater BLE Control</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Webasto Heater Control</title>
+  <meta name="theme-color" content="#1a3c34"/>
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; padding: 20px; background: #f0f0f0; }
-    h1 { color: #333; }
-    button { padding: 15px 30px; font-size: 18px; margin: 10px; border: none; border-radius: 8px; cursor: pointer; }
-    #onBtn { background: #4CAF50; color: white; }
-    #onBtn:disabled { background: #666; }
-    #offBtn { background: #f44336; color: white; }
-    #status { margin: 20px; font-size: 20px; font-weight: bold; color: #333; }
-    #log { margin: 20px; padding: 10px; background: #fff; border: 1px solid #ccc; height: 200px; overflow-y: scroll; text-align: left; }
+    :root {
+      --primary: #2e7d32;
+      --primary-dark: #1b5e20;
+      --danger: #c62828;
+      --bg: #f5f5f5;
+      --card: white;
+      --text: #212121;
+      --border: #e0e0e0;
+    }
+
+    [data-theme="dark"] {
+      --bg: #121212;
+      --card: #1e1e1e;
+      --text: #e0e0e0;
+      --border: #333;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    .container {
+      max-width: 420px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+
+    header {
+      text-align: center;
+      padding: 20px 0 12px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.8rem;
+      color: var(--primary);
+    }
+
+    .status-card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 20px;
+      margin: 16px 0;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      text-align: center;
+      border: 1px solid var(--border);
+    }
+
+    .status-label {
+      font-size: 0.9rem;
+      color: #757575;
+      margin-bottom: 8px;
+    }
+
+    .status-value {
+      font-size: 2.4rem;
+      font-weight: bold;
+      margin: 8px 0;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 16px;
+      margin: 24px 0;
+    }
+
+    button {
+      flex: 1;
+      padding: 16px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: white;
+    }
+
+    #connectBtn {
+      background: #0288d1;
+    }
+
+    #connectBtn:hover { background: #0277bd; }
+
+    #onBtn {
+      background: var(--primary);
+    }
+
+    #onBtn:hover { background: var(--primary-dark); }
+
+    #offBtn {
+      background: var(--danger);
+    }
+
+    #offBtn:hover { background: #b71c1c; }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .connection-info {
+      margin-top: 24px;
+      font-size: 0.9rem;
+      color: #757575;
+      text-align: center;
+    }
+
+    .theme-toggle {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: none;
+      font-size: 1.4rem;
+      cursor: pointer;
+    }
+
+    footer {
+      text-align: center;
+      padding: 24px 0;
+      color: #757575;
+      font-size: 0.85rem;
+    }
   </style>
 </head>
 <body>
-  <h1>Land Rover Heater Remote Control</h1>
-  <button id="connectBtn">Connect to HeaterControl</button>
-  <br><br>
-  <button id="onBtn" disabled>Turn Heater ON</button>
-  <button id="offBtn" disabled>Turn Heater OFF</button>
-  <div id="status">Disconnected</div>
-  <div id="log"></div>
+
+  <button class="theme-toggle" onclick="toggleTheme()">🌙</button>
+
+  <div class="container">
+    <header>
+      <h1>Webasto Heater</h1>
+    </header>
+
+    <div class="status-card">
+      <div class="status-label">Connection Status</div>
+      <div id="connectionStatus" class="status-value">Disconnected</div>
+
+      <div class="status-label" style="margin-top:20px">Heater Status</div>
+      <div id="heaterStatus" class="status-value">OFF</div>
+    </div>
+
+    <div class="buttons">
+      <button id="connectBtn">Connect to Heater</button>
+    </div>
+
+    <div class="buttons" style="display:none;" id="controlButtons">
+      <button id="onBtn">Heater ON</button>
+      <button id="offBtn">Heater OFF</button>
+    </div>
+
+    <div class="connection-info" id="deviceInfo"></div>
+  </div>
+
+  <footer>
+    ESP32 + S-10 Webasto Control • Snodland, 2026
+  </footer>
 
   <script>
-    const SERVICE_UUID       = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
-    const WRITE_CHAR_UUID    = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
-    const NOTIFY_CHAR_UUID   = "1c95d3f2-7f3e-4d3a-9c18-4e7b5d7e3d2f";
-
-    let device, writeChar, notifyChar;
-    const logDiv = document.getElementById('log');
-    const statusDiv = document.getElementById('status');
-
-    function log(message) {
-      logDiv.innerHTML += message + "<br>";
-      logDiv.scrollTop = logDiv.scrollHeight;
+    // Theme toggle
+    function toggleTheme() {
+      document.body.dataset.theme = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('theme', document.body.dataset.theme);
     }
 
-    document.getElementById('connectBtn').addEventListener('click', async () => {
+    // Load saved theme
+    if (localStorage.getItem('theme') === 'dark' ||
+        (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.body.dataset.theme = 'dark';
+    }
+
+    // ── BLE Variables ────────────────────────────────────────
+    let device;
+    let server;
+    let service;
+    let characteristic;
+    let isConnected = false;
+
+    const SERVICE_UUID        = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+    const CHARACTERISTIC_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+
+    const connectBtn    = document.getElementById('connectBtn');
+    const onBtn         = document.getElementById('onBtn');
+    const offBtn        = document.getElementById('offBtn');
+    const controlButtons = document.getElementById('controlButtons');
+    const connStatus    = document.getElementById('connectionStatus');
+    const heaterStatus  = document.getElementById('heaterStatus');
+    const deviceInfo    = document.getElementById('deviceInfo');
+
+    // ── Connection ───────────────────────────────────────────
+    async function connect() {
       try {
-        log("Requesting BLE device...");
         device = await navigator.bluetooth.requestDevice({
-          filters: [{ name: "HeaterControl" }],
+          filters: [{ namePrefix: "Heater" }],   // helps find your device faster
           optionalServices: [SERVICE_UUID]
         });
 
-        log("Connecting to GATT server...");
-        const server = await device.gatt.connect();
+        deviceInfo.textContent = `Connected to: ${device.name || "HeaterESP32"}`;
 
-        log("Getting service...");
-        const service = await server.getPrimaryService(SERVICE_UUID);
+        device.addEventListener('gattserverdisconnected', onDisconnected);
 
-        log("Getting characteristics...");
-        writeChar = await service.getCharacteristic(WRITE_CHAR_UUID);
-        notifyChar = await service.getCharacteristic(NOTIFY_CHAR_UUID);
+        server = await device.gatt.connect();
+        service = await server.getPrimaryService(SERVICE_UUID);
+        characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
 
-        // Enable notifications
-        await notifyChar.startNotifications();
-        notifyChar.addEventListener('characteristicvaluechanged', event => {
-          const value = new TextDecoder().decode(event.target.value);
-          statusDiv.textContent = value;
-          log("Status update: " + value);
-        });
+        isConnected = true;
+        updateUI();
 
-        statusDiv.textContent = "Connected!";
-        document.getElementById('connectBtn').disabled = true;
-        document.getElementById('onBtn').disabled = false;
-        document.getElementById('offBtn').disabled = false;
-        log("Ready to control heater!");
+        // Optional: read initial state
+        try {
+          const value = await characteristic.readValue();
+          const decoder = new TextDecoder();
+          const state = decoder.decode(value);
+          if (state === "1") heaterStatus.textContent = "ON";
+          if (state === "0") heaterStatus.textContent = "OFF";
+        } catch(e) {
+          console.log("Couldn't read initial state:", e);
+        }
+
       } catch (error) {
-        log("Error: " + error);
-        statusDiv.textContent = "Connection failed";
+        console.error("Connection failed:", error);
+        alert("Could not connect. Make sure the heater is powered on and advertising.\n\nError: " + error.message);
       }
-    });
+    }
 
-    document.getElementById('onBtn').addEventListener('click', async () => {
-      if (writeChar) {
-        try {
-          await writeChar.writeValue(new TextEncoder().encode("ON"));
-          log("Sent: ON");
-        } catch (e) { log("Write error: " + e); }
-      }
-    });
+    function onDisconnected() {
+      console.log("Disconnected");
+      isConnected = false;
+      updateUI();
+      alert("Disconnected from heater. Please reconnect.");
+    }
 
-    document.getElementById('offBtn').addEventListener('click', async () => {
-      if (writeChar) {
-        try {
-          await writeChar.writeValue(new TextEncoder().encode("OFF"));
-          log("Sent: OFF");
-        } catch (e) { log("Write error: " + e); }
+    function updateUI() {
+      connStatus.textContent = isConnected ? "Connected" : "Disconnected";
+      connStatus.style.color = isConnected ? "#2e7d32" : "#c62828";
+      controlButtons.style.display = isConnected ? "flex" : "none";
+      connectBtn.textContent = isConnected ? "Reconnect" : "Connect to Heater";
+    }
+
+    // ── Control Commands ─────────────────────────────────────
+    async function sendCommand(byte) {
+      if (!characteristic) return;
+
+      try {
+        const buffer = new Uint8Array([byte]);
+        await characteristic.writeValue(buffer);
+
+        // Update local UI optimistically
+        if (byte === 0x01) {
+          heaterStatus.textContent = "ON";
+          heaterStatus.style.color = "#2e7d32";
+        } else if (byte === 0x00) {
+          heaterStatus.textContent = "OFF";
+          heaterStatus.style.color = "inherit";
+        }
+      } catch (error) {
+        console.error("Write failed:", error);
+        alert("Failed to send command: " + error.message);
       }
-    });
+    }
+
+    // ── Event Listeners ──────────────────────────────────────
+    connectBtn.addEventListener('click', connect);
+    onBtn.addEventListener('click',  () => sendCommand(0x01));
+    offBtn.addEventListener('click', () => sendCommand(0x00));
   </script>
 </body>
 </html>
