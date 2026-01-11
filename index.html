@@ -93,19 +93,16 @@
     #connectBtn {
       background: #0288d1;
     }
-
     #connectBtn:hover { background: #0277bd; }
 
     #onBtn {
       background: var(--primary);
     }
-
     #onBtn:hover { background: var(--primary-dark); }
 
     #offBtn {
       background: var(--danger);
     }
-
     #offBtn:hover { background: #b71c1c; }
 
     button:disabled {
@@ -148,10 +145,10 @@
     </header>
 
     <div class="status-card">
-      <div class="status-label">Connection Status</div>
+      <div class="status-label">Connection</div>
       <div id="connectionStatus" class="status-value">Disconnected</div>
 
-      <div class="status-label" style="margin-top:20px">Heater Status</div>
+      <div class="status-label" style="margin-top:20px">Heater State</div>
       <div id="heaterStatus" class="status-value">OFF</div>
     </div>
 
@@ -159,7 +156,7 @@
       <button id="connectBtn">Connect to Heater</button>
     </div>
 
-    <div class="buttons" style="display:none;" id="controlButtons">
+    <div class="buttons" id="controlButtons" style="display:none;">
       <button id="onBtn">Heater ON</button>
       <button id="offBtn">Heater OFF</button>
     </div>
@@ -178,13 +175,12 @@
       localStorage.setItem('theme', document.body.dataset.theme);
     }
 
-    // Load saved theme
     if (localStorage.getItem('theme') === 'dark' ||
         (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       document.body.dataset.theme = 'dark';
     }
 
-    // ── BLE Variables ────────────────────────────────────────
+    // ── BLE Configuration ────────────────────────────────────────
     let device;
     let server;
     let service;
@@ -202,11 +198,11 @@
     const heaterStatus  = document.getElementById('heaterStatus');
     const deviceInfo    = document.getElementById('deviceInfo');
 
-    // ── Connection ───────────────────────────────────────────
+    // ── Connect to ESP32 ─────────────────────────────────────────
     async function connect() {
       try {
         device = await navigator.bluetooth.requestDevice({
-          filters: [{ namePrefix: "Heater" }],   // helps find your device faster
+          filters: [{ namePrefix: "Heater" }],
           optionalServices: [SERVICE_UUID]
         });
 
@@ -221,28 +217,23 @@
         isConnected = true;
         updateUI();
 
-        // Optional: read initial state
+        // Try to read current heater state (optional)
         try {
           const value = await characteristic.readValue();
           const decoder = new TextDecoder();
           const state = decoder.decode(value);
-          if (state === "1") heaterStatus.textContent = "ON";
-          if (state === "0") heaterStatus.textContent = "OFF";
-        } catch(e) {
-          console.log("Couldn't read initial state:", e);
-        }
-
+          heaterStatus.textContent = (state === "1") ? "ON" : "OFF";
+        } catch {}
       } catch (error) {
-        console.error("Connection failed:", error);
-        alert("Could not connect. Make sure the heater is powered on and advertising.\n\nError: " + error.message);
+        console.error(error);
+        alert("Connection failed.\nMake sure heater is powered on.\n\n" + error.message);
       }
     }
 
     function onDisconnected() {
-      console.log("Disconnected");
       isConnected = false;
       updateUI();
-      alert("Disconnected from heater. Please reconnect.");
+      alert("Disconnected from heater. Reconnect to continue.");
     }
 
     function updateUI() {
@@ -252,29 +243,24 @@
       connectBtn.textContent = isConnected ? "Reconnect" : "Connect to Heater";
     }
 
-    // ── Control Commands ─────────────────────────────────────
+    // ── Send command to ESP32 (0x01 = ON, 0x00 = OFF) ─────────────
     async function sendCommand(byte) {
-      if (!characteristic) return;
+      if (!characteristic || !isConnected) return;
 
       try {
         const buffer = new Uint8Array([byte]);
         await characteristic.writeValue(buffer);
 
-        // Update local UI optimistically
-        if (byte === 0x01) {
-          heaterStatus.textContent = "ON";
-          heaterStatus.style.color = "#2e7d32";
-        } else if (byte === 0x00) {
-          heaterStatus.textContent = "OFF";
-          heaterStatus.style.color = "inherit";
-        }
+        // Optimistic UI update
+        heaterStatus.textContent = (byte === 0x01) ? "ON" : "OFF";
+        heaterStatus.style.color = (byte === 0x01) ? "#2e7d32" : "inherit";
       } catch (error) {
         console.error("Write failed:", error);
-        alert("Failed to send command: " + error.message);
+        alert("Failed to control heater: " + error.message);
       }
     }
 
-    // ── Event Listeners ──────────────────────────────────────
+    // ── Event Listeners ──────────────────────────────────────────
     connectBtn.addEventListener('click', connect);
     onBtn.addEventListener('click',  () => sendCommand(0x01));
     offBtn.addEventListener('click', () => sendCommand(0x00));
